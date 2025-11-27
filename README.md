@@ -4,8 +4,8 @@ Syntax is shown if you run the dot command without switches.
 
 <li>TCPPING dot command 2022
 <li>SSH Client dotn command 2025
-
-
+<p><p>
+  
 | Filename  | Description | Additional information |
 | ------------- | ------------- | ------------- |
 | **TCPPING** | | |
