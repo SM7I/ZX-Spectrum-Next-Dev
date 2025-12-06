@@ -15,5 +15,5 @@ Syntax is shown if you run the dot command without switches.
 | **SSH** | | | |
 | SSH | SSH client that makes use of the rpi0 to do the heavy lifting with encryption | Attach microusb to Ethernet dongle in one of the microusb ports of the rpi0 and connect cable to network switch. Microusb ports are exposed on the back of the computer. | 2025 |
 | **PING** | | | |
-| PING | The classic PING command in the form of DOT command using the rpi0. | Same requirements as for the SSH client.| 2025 |
+| PING | The classic PING command in the form of DOT command using the rpi0. | Same requirements as for the SSH client. It takes IP or FQDN as argument to the command. | 2025 |
 | | | | |
