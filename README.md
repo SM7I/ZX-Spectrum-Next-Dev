@@ -10,7 +10,7 @@ Syntax is shown if you run the dot command without switches.
 | Filename  | Description | Additional information | Year |
 | ------------- | ------------- | ------------- | ------------- |
 | **TCPPING** | | | |
-| TCPPING | Command to ping a remote host on a known TCP port that will answer | Takes IP or FQDN as argument as well as TCP port, if other than default 22. | 2022 |
+| TCPPING | Command to ping a remote host on a known TCP port that will answer | Takes IP or FQDN as argument as well as TCP port. | 2022 |
 | | | | |
 | **SSH** | | | |
 | SSH | SSH client that makes use of the rpi0 to do the heavy lifting with encryption | Attach microusb to Ethernet dongle in one of the microusb ports of the rpi0 and connect cable to network switch. Microusb ports are exposed on the back of the computer. | 2025 |
