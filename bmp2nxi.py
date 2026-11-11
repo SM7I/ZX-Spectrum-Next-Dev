@@ -1,18 +1,22 @@
 #!/usr/bin/env python3
 """
 bmp2nxi.py - convert a BMP image to a ZX Spectrum Next .NXI picture (258x108)
-(c) 2006 SM7I Projects
 
-Usage:  python bmp2nxi.py [-t RRGGBB|none] in.bmp out.nxi
+Pure Python 3, no extra packages needed.
+
+Usage:  python bmp2nxi.py [-t RRGGBB|none] [-d] [-n] [-k N] in.bmp out.nxi
   -t  colour that becomes transparent (default FF00FF); 32-bit BMPs with
       alpha < 128 are also transparent.
+  -d  Floyd-Steinberg dithering (good for photos and gradients)
+  -n  nearest-neighbour resizing instead of area averaging (good for pixel art)
+  -k  palette refinement passes (default 6, 0 = off)
 
 NXI layout (28376 bytes):
   0..511     256 palette entries x 2 bytes: RRRGGGBB, 0000000b
              entries 0-15 fixed system colours, entry 227 = E3 01 (transparent),
              no other entry may start with E3
   512..      pixel indices, column-major: pixel(x,y) = data[512 + x*108 + y]
-Input: uncompressed 8/24/32-bit BMP (scaled to 258x108 if another size).
+Input: uncompressed 8/24/32-bit BMP (resized to 258x108 if another size).
 """
 import struct
 import sys
@@ -133,49 +137,153 @@ def median_cut(hist, maxn):
     return out
 
 
-def convert(src, dst, key=(255, 0, 255)):
+def axis_weights(n_src, n_dst, nearest):
+    """For each destination index, a list of (source index, weight)."""
+    res = []
+    if nearest or n_src <= n_dst:
+        for d in range(n_dst):
+            res.append([(min(n_src - 1, int((d + 0.5) * n_src / n_dst)), 1.0)])
+    else:
+        sc = n_src / n_dst
+        for d in range(n_dst):
+            a, b = d * sc, (d + 1) * sc
+            lst = []
+            for i in range(int(a), min(n_src - 1, int(b - 1e-9)) + 1):
+                w = min(b, i + 1) - max(a, i)
+                if w > 1e-9:
+                    lst.append((i, w))
+            res.append(lst)
+    return res
+
+
+def resample(img, iw, ih, key, nearest):
+    """Area-average (or nearest) resample to WxH.
+    Returns a list of (r,g,b) floats 0..255, or None for transparent pixels."""
+    xw = axis_weights(iw, W, nearest)
+    yw = axis_weights(ih, H, nearest)
+    needed = sorted({i for lst in yw for i, _ in lst})
+    hrows = {}
+    for y in needed:                                  # horizontal pass
+        base = y * iw
+        row = []
+        for lst in xw:
+            sr = sg = sb = so = sw = 0.0
+            for i, w in lst:
+                r, g, b, a = img[base + i]
+                sw += w
+                if a >= 128 and not (key is not None and (r, g, b) == key):
+                    sr += r * w; sg += g * w; sb += b * w; so += w
+            row.append((sr, sg, sb, so, sw))
+        hrows[y] = row
+    out = []
+    for lst in yw:                                    # vertical pass
+        for x in range(W):
+            sr = sg = sb = so = sw = 0.0
+            for y, w in lst:
+                a = hrows[y][x]
+                sr += a[0]*w; sg += a[1]*w; sb += a[2]*w; so += a[3]*w; sw += a[4]*w
+            if so <= 0 or so / sw < 0.5:
+                out.append(None)
+            else:
+                out.append((sr / so, sg / so, sb / so))
+    return out
+
+
+def refine(centers, fixed, hist, iterations):
+    """Lloyd/k-means refinement of generated palette centres (floats, 0..7 units).
+    Fixed colours take part in the assignment but never move."""
+    cols = [(c, hist[c], (c >> 6) & 7, (c >> 3) & 7, c & 7) for c in range(512) if hist[c]]
+    nfix = len(fixed)
+    for _ in range(iterations):
+        allc = fixed + centers
+        sums = [[0.0, 0.0, 0.0, 0.0] for _ in centers]
+        for c, w, r, g, b in cols:
+            best, bd = 0, 1e30
+            for k, (pr, pg, pb) in enumerate(allc):
+                d = (r-pr)**2 * 3 + (g-pg)**2 * 4 + (b-pb)**2 * 2
+                if d < bd:
+                    bd, best = d, k
+            if best >= nfix:
+                s = sums[best - nfix]
+                s[0] += w*r; s[1] += w*g; s[2] += w*b; s[3] += w
+        centers = [(s[0]/s[3], s[1]/s[3], s[2]/s[3]) if s[3] else c
+                   for s, c in zip(sums, centers)]
+    return centers
+
+
+def convert(src, dst, key=(255, 0, 255), dither=False, nearest=False, kiter=6):
     iw, ih, img = load_bmp(src)
     if (iw, ih) != (W, H):
-        print("note: %dx%d image scaled to %dx%d (nearest neighbour)" % (iw, ih, W, H),
-              file=sys.stderr)
+        print("note: %dx%d image resized to %dx%d (%s)" %
+              (iw, ih, W, H, "nearest neighbour" if nearest else "area average"), file=sys.stderr)
+    pix = resample(img, iw, ih, key, nearest)
+
+    # histogram of the 9-bit colours, for building the palette
     hist = [0] * 512
-    opaque = [False] * (W * H)
-    code = [0] * (W * H)
-    for y in range(H):
-        for x in range(W):
-            r, g, b, a = img[(y * ih // H) * iw + (x * iw // W)]
-            o = a >= 128
-            if key is not None and (r, g, b) == key:
-                o = False
-            i = y * W + x
-            opaque[i] = o
-            code[i] = code333(to3(r), to3(g), to3(b))
-            if o:
-                hist[code[i]] += 1
+    for p in pix:
+        if p is not None:
+            hist[code333(int(p[0]*7/255 + .5), int(p[1]*7/255 + .5), int(p[2]*7/255 + .5))] += 1
 
     pal = [None] * 256
+    fixed = []
     for i in range(NFIXED):
         b0, b1 = FIXED_PAL[i*2], FIXED_PAL[i*2 + 1]
         pal[i] = ((b0 >> 5) << 6) | (((b0 >> 2) & 7) << 3) | (((b0 & 3) << 1) | (b1 & 1))
+        fixed.append(((pal[i] >> 6) & 7, (pal[i] >> 3) & 7, pal[i] & 7))
     free = [i for i in range(NFIXED, 256) if i != TRANSP]          # 239 entries
+
     gen = median_cut(hist, len(free))
-    for i, c in enumerate(gen):
-        r, g, b = (c >> 6) & 7, (c >> 3) & 7, c & 7
+    centers = [(((c >> 6) & 7), ((c >> 3) & 7), (c & 7)) for c in gen]
+    if kiter and centers:
+        centers = refine([tuple(map(float, c)) for c in centers], fixed, hist, kiter)
+    for i, (fr, fg, fb) in enumerate(centers):
+        r, g, b = int(fr + .5), int(fg + .5), int(fb + .5)
         if ((r << 5) | (g << 2) | (b >> 1)) == 0xE3:               # avoid E3 first byte
             g = 1
         pal[free[i]] = code333(r, g, b)
 
-    usable = [(i, pal[i]) for i in range(256) if i != TRANSP and pal[i] is not None]
-    lut = {}
-    for c in set(code[i] for i in range(W * H) if opaque[i]):
-        r, g, b = (c >> 6) & 7, (c >> 3) & 7, c & 7
-        best, bd = 0, 1 << 30
-        for i, p in usable:
-            pr, pg, pb = (p >> 6) & 7, (p >> 3) & 7, p & 7
-            d = (r-pr)**2 * 3 + (g-pg)**2 * 4 + (b-pb)**2 * 2
-            if d < bd:
-                bd, best = d, i
-        lut[c] = best
+    usable = [(i, (pal[i] >> 6) & 7, (pal[i] >> 3) & 7, pal[i] & 7)
+              for i in range(256) if i != TRANSP and pal[i] is not None]
+    cache = {}
+
+    def nearest_idx(r, g, b):
+        k = (int(r*16 + .5), int(g*16 + .5), int(b*16 + .5))
+        v = cache.get(k)
+        if v is None:
+            best, bd = 0, 1e30
+            for i, pr, pg, pb in usable:
+                d = (r-pr)**2 * 3 + (g-pg)**2 * 4 + (b-pb)**2 * 2
+                if d < bd:
+                    bd, best = d, i
+            cache[k] = v = best
+        return v
+
+    idx = [TRANSP] * (W * H)
+    if not dither:
+        for n, p in enumerate(pix):
+            if p is not None:
+                idx[n] = nearest_idx(p[0]*7/255, p[1]*7/255, p[2]*7/255)
+    else:                                                          # Floyd-Steinberg, serpentine
+        R = [p[0]*7/255 if p else 0.0 for p in pix]
+        G = [p[1]*7/255 if p else 0.0 for p in pix]
+        B = [p[2]*7/255 if p else 0.0 for p in pix]
+        pc = {i: (pr, pg, pb) for i, pr, pg, pb in usable}
+        for y in range(H):
+            step = 1 if y % 2 == 0 else -1
+            for x in (range(W) if step == 1 else range(W - 1, -1, -1)):
+                n = y * W + x
+                if pix[n] is None:
+                    continue
+                r = min(7.0, max(0.0, R[n])); g = min(7.0, max(0.0, G[n])); b = min(7.0, max(0.0, B[n]))
+                k = nearest_idx(r, g, b)
+                idx[n] = k
+                er, eg, eb = r - pc[k][0], g - pc[k][1], b - pc[k][2]
+                for dx, dy, f in ((step, 0, 7/16), (-step, 1, 3/16), (0, 1, 5/16), (step, 1, 1/16)):
+                    xx, yy = x + dx, y + dy
+                    if 0 <= xx < W and yy < H:
+                        m = yy * W + xx
+                        if pix[m] is not None:
+                            R[m] += er * f; G[m] += eg * f; B[m] += eb * f
 
     out = bytearray(SIZE)
     for i in range(256):
@@ -188,8 +296,7 @@ def convert(src, dst, key=(255, 0, 255)):
     out[TRANSP*2], out[TRANSP*2 + 1] = 0xE3, 0x01
     for y in range(H):
         for x in range(W):
-            i = y * W + x
-            out[PAL_BYTES + x * H + y] = lut[code[i]] if opaque[i] else TRANSP
+            out[PAL_BYTES + x * H + y] = idx[y * W + x]
     with open(dst, "wb") as f:
         f.write(out)
     print("wrote %s (%d bytes, %d palette colours generated)" % (dst, SIZE, len(gen)),
@@ -197,19 +304,31 @@ def convert(src, dst, key=(255, 0, 255)):
 
 
 def main(argv):
-    key, files, i = (255, 0, 255), [], 1
+    key, files, dither, nearest, kiter, i = (255, 0, 255), [], False, False, 6, 1
     while i < len(argv):
-        if argv[i] == "-t" and i + 1 < len(argv):
+        a = argv[i]
+        if a == "-t" and i + 1 < len(argv):
             i += 1
             key = None if argv[i].lower() == "none" else tuple(bytes.fromhex(argv[i].zfill(6)))
+        elif a == "-d":
+            dither = True
+        elif a == "-n":
+            nearest = True
+        elif a == "-k" and i + 1 < len(argv):
+            i += 1
+            kiter = int(argv[i])
         else:
-            files.append(argv[i])
+            files.append(a)
         i += 1
     if len(files) != 2:
-        print("usage: python bmp2nxi.py [-t RRGGBB|none] in.bmp out.nxi", file=sys.stderr)
+        print("usage: python bmp2nxi.py [-t RRGGBB|none] [-d] [-n] [-k N] in.bmp out.nxi\n"
+              "  -t  transparent colour (default FF00FF)\n"
+              "  -d  Floyd-Steinberg dithering (good for photos)\n"
+              "  -n  nearest-neighbour resizing instead of area averaging (good for pixel art)\n"
+              "  -k  palette refinement passes (default 6, 0 = off)", file=sys.stderr)
         return 1
     try:
-        convert(files[0], files[1], key)
+        convert(files[0], files[1], key, dither, nearest, kiter)
     except (OSError, ValueError) as e:
         print("error:", e, file=sys.stderr)
         return 1
