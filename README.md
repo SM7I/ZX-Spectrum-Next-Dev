@@ -1,6 +1,7 @@
 # ZX-Spectrum-Next-Dev
 Here you´ll find my own developments and contributions for the magnificent ZX Spectrum Next platform. These are binaries (dot commands) that you can download and put in your dot folder on the SD card.
 Syntax is shown if you run the dot command without switches.
+Please not that Python scripts / tools can *not* be run on the ZX Spectrum Next, only on platforms supporting Python language, such as Linux, Windows and Mac.
 
 <li>TCPPING
 <li>SSH Client (DietPi and AlpineNext)
