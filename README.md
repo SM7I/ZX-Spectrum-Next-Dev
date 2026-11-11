@@ -18,7 +18,7 @@ Syntax is shown if you run the dot command without switches.
 | SSH | SSH client that makes use of the rpi0 or rpi0w to do the heavy lifting with encryption | If using rpi0, attach microusb to Ethernet dongle in one of the microusb ports of the rpi0 and connect cable to network switch. Microusb ports are exposed on the back of the computer. Syntax: .SSHDIET (or .SSHALPIN) <user host port>| 2025 |
 | PING | The classic PING command in the form of DOT command using the rpi0 or rpi0w. | Same requirements as for the SSH client. It takes IP or FQDN as argument to the command. Syntax: .PING <IPaddress or FQDN> | 2025 |
 | NXIVIEW | Viewing NXI files | Platform independent Python script that allows for viewing NXI files, such as the images for the cores in ZX Spectrum Next. Syntax: python nxiview.py | 2026 |
-| BMP2NXI | Convert BMP to NXI | Platform independent Python script that allows for converting BMP to NXI. Syntax: python bmp2nxi.py [-t RRGGBB|none] [-d] [-n] [-k N] in.bmp out.nxi | 2026 |
+| BMP2NXI | Convert BMP to NXI | Platform independent Python script that allows for converting BMP to NXI. Syntax: python bmp2nxi.py <-t RRGGBB none> <-d> <-n> <-k N> in.bmp out.nxi | 2026 |
 | HDFMONKEY | Manipulate HDF files | Platform independent Python script that allows for manipulating HDF images. Syntax: python hdfmonkey_gui.py | 2026 |
 | ALPWIFI | WiFi setup rpi0w | WiFi setup tool for rpi0w. Syntax: .ALPWIFI | 2026 |
 | C64.NXI | NXI image for C64 core | NXI image to accompany the C64 core. Put in C64 folder and rename to 'core.nxi'. This is actually a photo of my own C64 that I converted using my own Python tools | 2026 |
