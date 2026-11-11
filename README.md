@@ -8,6 +8,7 @@ Syntax is shown if you run the dot command without switches.
 <li>NXIVIEW (python)
 <li>BMP2NXI (python)
 <li>HDFmonkey (python)
+<li>ALPWIFI
 <p><p>
   
 | Filename  | Description | Additional information | Year |
@@ -18,3 +19,4 @@ Syntax is shown if you run the dot command without switches.
 | NXIVIEW | Viewing NXI files | Platform independent Python script that allows for viewing NXI files, such as the images for the cores in ZX Spectrum Next. Syntax: python nxiview.py | 2026 |
 | BMP2NXI | Convert BMP to NXI | Platform independent Python script that allows for converting BMP to NXI. Syntax: python bmp2nxi.py [-t RRGGBB|none] [-d] [-n] [-k N] in.bmp out.nxi | 2026 |
 | HDFMONKEY | Manipulate HDF files | Platform independent Python script that allows for manipulating HDF images. Syntax: python hdfmonkey_gui.py | 2026 |
+| ALPWIFI | WiFi setup rpi0w | WiFi setup tool for rpi0w. Syntax: .ALPWIFI | 2026 |
